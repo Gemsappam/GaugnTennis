@@ -85,14 +85,18 @@ h2{font-size:22px;font-weight:700;letter-spacing:-.015em;margin:30px 4px 12px}
 label.f{display:block;font-size:13px;color:var(--ink2);margin:14px 4px 6px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .check{display:flex;align-items:center;gap:10px;margin-top:16px;font-size:15px}
-.check input{width:22px;height:22px;accent-color:var(--orange)}
+.check input{flex:none;width:22px;height:22px;accent-color:var(--orange)}
+.consent{margin-top:18px;padding-top:16px;border-top:1px solid var(--rim-lo)}
+.consent p{font-size:13px;line-height:1.45;color:var(--ink2)}
+.link{color:var(--orange);font-size:14px;font-weight:600;padding:8px 0 0}
+.legal{white-space:pre-wrap;font-size:14px;line-height:1.5;margin-top:12px}
 
 /* шапка пути */
 .who{display:inline-flex;align-items:center;gap:10px;border-radius:999px;padding:7px 14px 7px 7px;font-size:14px;max-width:100%}
 .who .av{flex:none;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:13px;color:#fff;
   background:radial-gradient(circle at 35% 30%,var(--orange-hi),var(--orange) 55%,var(--orange-lo))}
 .who .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.who .grp{color:var(--ink2);white-space:nowrap}
+.who .grp{color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:45%}
 .path-head h1{margin-top:24px}
 
 /* траектория */
@@ -271,6 +275,7 @@ function route() {
   const m = S.me;
   if (!m.admin) {
     if (!m.user) return regScreen();
+    if (m.user.status !== "rejected" && !m.user.consent) return consentScreen();
     if (m.user.status === "pending") return screen("Заявка у руководителя",
       "Как только её подтвердят, здесь появится твой путь к автомату. Уведомление придёт в чат.", "Проверить ещё раз", "reload");
     if (m.user.status === "rejected") return screen("Заявка отклонена", "Если это ошибка — подойди к руководителю клуба.");
@@ -288,19 +293,34 @@ function regForm() {
     <input class="inp" id="rName" placeholder="Васильев Иван Васильевич" autocomplete="name">
     <label class="f">Курс и Факультет</label>
     <input class="inp" id="rGrp" placeholder="1 курс, Юридический">
-    <button class="btn" style="margin-top:18px" data-act="register">Отправить заявку</button></div>`;
+    ${consentBlock("rOk")}
+    <button class="btn" style="margin-top:18px" data-act="register" data-need="rOk" disabled>Отправить заявку</button></div>`;
+}
+function consentBlock(id) {
+  return `<div class="consent">
+    <p>Руководитель клуба (${esc(S.me.contact)}) будет хранить твои ФИО, курс и факультет, Telegram ID и посещения и передавать посещения в университет для зачёта. Отозвать согласие можно в любой момент.</p>
+    <button class="link" data-act="consentRead">Читать согласие полностью</button>
+    <label class="check"><input type="checkbox" id="${id}"> Даю согласие на обработку персональных данных</label></div>`;
+}
+function consentScreen() {
+  $("tabs").hidden = true; $("fab").hidden = true;
+  $("app").innerHTML = `<div class="screen"><h1>Согласие на обработку данных</h1>
+    <p class="sub">Без него клуб не может учитывать посещения и передавать их в университет.</p>
+    <div class="card glass" style="margin-top:6px"><div class="legal">${esc(S.me.consent_text)}</div>
+      <label class="check"><input type="checkbox" id="cOk"> Даю согласие на обработку персональных данных</label>
+      <button class="btn" style="margin-top:18px" data-act="consentAccept" data-need="cOk" disabled>Принять</button></div></div>`;
 }
 function regScreen() {
   $("tabs").hidden = true; $("fab").hidden = true;
   $("app").innerHTML = `<div class="screen"><h1>Клуб настольного тенниса</h1>
-    <p class="sub" style="margin-bottom:10px">Один раз укажи ФИО и группу как в ведомости — поменять их потом сможет только руководитель.</p>${regForm()}</div>`;
+    <p class="sub" style="margin-bottom:10px">Один раз укажи ФИО, курс и факультет как в ведомости — поменять их потом сможет только руководитель.</p>${regForm()}</div>`;
 }
 
 /* ─── рендер вкладок ─── */
 function render(animate) {
   clearInterval(S.poll); clearInterval(S.bar); S.poll = S.bar = null;
   document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.tab === S.tab));
-  const approved = S.me.user && S.me.user.status === "approved";
+  const approved = S.me.user && S.me.user.status === "approved" && S.me.user.consent;
   $("fab").hidden = !(S.tab === "path" && approved);
   if (S.tab === "path") { $("app").innerHTML = viewPath(); if (approved) drawRoad(animate); }
   if (S.tab === "sched") $("app").innerHTML = viewSched();
@@ -311,6 +331,11 @@ function render(animate) {
 /* ── Путь ── */
 function viewPath() {
   const m = S.me, u = m.user;
+  if (u && u.status === "approved" && !u.consent) return `<h1>Твой путь</h1>
+    <p class="sub" style="margin-bottom:14px">Чтобы твои посещения учитывались, прими согласие на обработку данных.</p>
+    <div class="card glass"><div class="legal" style="margin-top:0">${esc(m.consent_text)}</div>
+      <label class="check"><input type="checkbox" id="cOk"> Даю согласие на обработку персональных данных</label>
+      <button class="btn" style="margin-top:18px" data-act="consentAccept" data-need="cOk" disabled>Принять</button></div>`;
   if (!u || u.status !== "approved") return `<h1>Твой путь</h1>
     <p class="sub" style="margin-bottom:14px">Ты руководитель. Если тоже хочешь отмечаться и копить посещения — зарегистрируйся.</p>${regForm()}`;
   const target = m.target, dates = m.visits, n = dates.length, done = Math.min(n, target), left = target - n;
@@ -473,14 +498,14 @@ function renderUsers() {
   const list = S.users.approved.filter(u => !qv || u.name.toLowerCase().includes(qv));
   l.innerHTML = list.length ? list.map(u => `<div class="person" data-act="uOpen" data-id="${u.id}">
       <div class="i"><div class="a">${esc(u.name)}</div><div class="b">${esc(u.grp)}</div></div>
-      <span class="badge num ${u.visits >= t ? "win" : ""}">${u.visits >= t ? "автомат" : u.visits + " из " + t}</span></div>`).join("")
+      <span class="badge num ${u.visits >= t ? "win" : ""}">${!u.consent ? "нет согласия" : u.visits >= t ? "автомат" : u.visits + " из " + t}</span></div>`).join("")
     : `<div class="empty">${S.users.approved.length ? "Никого не нашёл" : "Пока никого. Участники появятся после подтверждения заявок."}</div>`;
 }
 function userSheet(id) {
   const u = S.users.approved.find(x => x.id == id); if (!u) return;
   openSheet(`<h3>${esc(u.name)}</h3><p class="muted" style="margin-top:4px">${u.visits} ${plural(u.visits, "посещение", "посещения", "посещений")} в семестре</p>
     <label class="f">Фамилия и имя</label><input class="inp" id="uName" value="${esc(u.name)}">
-    <label class="f">Группа</label><input class="inp" id="uGrp" value="${esc(u.grp)}">
+    <label class="f">Курс и факультет</label><input class="inp" id="uGrp" value="${esc(u.grp)}">
     <button class="btn" style="margin-top:18px" data-act="uSave" data-id="${u.id}">Сохранить</button>
     <button class="btn danger" style="margin-top:10px" data-act="uDel" data-id="${u.id}">Удалить из клуба</button>`);
 }
@@ -542,8 +567,10 @@ document.addEventListener("click", async e => {
       case "tab": if (S.tab !== el.dataset.tab) { haptic("tap"); S.tab = el.dataset.tab; render(true); } break;
       case "scan": haptic("tap"); scan(); break;
       case "register": {
-        await api("/api/register", { name: $("rName").value, grp: $("rGrp").value });
+        await api("/api/register", { name: $("rName").value, grp: $("rGrp").value, consent: $("rOk").checked });
         await loadMe(); haptic("success"); route(); if (S.me.admin) toast("Готово, ты в списке"); break; }
+      case "consentRead": openSheet(`<h3>Согласие на обработку персональных данных</h3><div class="legal">${esc(S.me.consent_text)}</div>`); break;
+      case "consentAccept": await api("/api/consent", { consent: true }); await loadMe(); haptic("success"); route(); toast("Спасибо! Согласие сохранено"); break;
       case "evNew": evSheet(); break;
       case "evSave": {
         await api("/api/admin/events", { day: $("eDay").value, t_from: $("eFrom").value, t_to: $("eTo").value,
@@ -569,6 +596,10 @@ document.addEventListener("click", async e => {
   finally { busy.delete(act); }
 });
 document.addEventListener("input", e => { if (e.target.id === "uSearch") renderUsers(); });
+document.addEventListener("change", e => {
+  const b = document.querySelector(`[data-need="${e.target.id}"]`);
+  if (b) { b.disabled = !e.target.checked; if (e.target.checked) haptic("tap"); }
+});
 addEventListener("resize", () => { if (S.tab === "path" && $("road")) drawRoad(false); });
 
 boot();
