@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Клуб настольного тенниса</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{
+  --bg1:#081741; --bg2:#123379;
+  --ink:#F3F6FF; --ink2:rgba(243,246,255,.64); --ink3:rgba(243,246,255,.38);
+  --orange:#FF8A2B; --orange-hi:#FFC58C; --orange-lo:#E0560A; --red:#FF6B61;
+  --glass-a:rgba(255,255,255,.20); --glass-b:rgba(255,255,255,.06);
+  --rim:rgba(255,255,255,.55); --rim-lo:rgba(255,255,255,.10);
+  --sheet:rgba(14,28,70,.80);
+  --shadow:0 14px 40px rgba(3,10,40,.45);
+  --track:rgba(255,255,255,.30);
+  --safe-top:calc(var(--tg-safe-area-inset-top,0px) + var(--tg-content-safe-area-inset-top,0px));
+  --safe-bottom:max(var(--tg-safe-area-inset-bottom,0px), env(safe-area-inset-bottom,0px));
+  color-scheme:dark;
+}
+:root.light{
+  --bg1:#DCE7FF; --bg2:#F4F7FF;
+  --ink:#0C1D4A; --ink2:rgba(12,29,74,.62); --ink3:rgba(12,29,74,.38); --red:#D70015;
+  --glass-a:rgba(255,255,255,.64); --glass-b:rgba(255,255,255,.34);
+  --rim:rgba(255,255,255,.95); --rim-lo:rgba(12,29,74,.07);
+  --sheet:rgba(246,249,255,.88);
+  --shadow:0 14px 36px rgba(40,70,160,.18);
+  --track:rgba(12,29,74,.22);
+  color-scheme:light;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{min-height:100%}
+body{font-family:-apple-system,"SF Pro Text",system-ui,"Segoe UI",Roboto,sans-serif;color:var(--ink);
+  background:var(--bg1);overflow-x:hidden;-webkit-font-smoothing:antialiased;font-size:16px}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+.num{font-family:ui-rounded,"SF Pro Rounded",-apple-system,system-ui,sans-serif;font-variant-numeric:tabular-nums}
+.muted{color:var(--ink2)}
+
+/* фон */
+.bg{position:fixed;inset:0;z-index:-1;overflow:hidden;background:linear-gradient(165deg,var(--bg2),var(--bg1) 70%)}
+.bg i{position:absolute;border-radius:50%;filter:blur(60px);opacity:.75}
+.bg .b1{width:70vw;height:70vw;right:-18vw;top:-12vw;background:#FF7A1A}
+.bg .b2{width:65vw;height:65vw;left:-25vw;top:38vh;background:#27B7F5}
+.bg .b3{width:80vw;height:80vw;right:-30vw;bottom:-25vw;background:#6D5BFF}
+:root.light .bg i{opacity:.45}
+
+/* Liquid Glass */
+.glass{position:relative;isolation:isolate;
+  background:linear-gradient(145deg,var(--glass-a),var(--glass-b));
+  -webkit-backdrop-filter:blur(24px) saturate(190%);backdrop-filter:blur(24px) saturate(190%);
+  box-shadow:var(--shadow),inset 0 1px 1px var(--rim),inset 0 -1px 1px var(--rim-lo)}
+.glass::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;
+  background:linear-gradient(160deg,var(--rim),transparent 38%,transparent 62%,rgba(255,255,255,.35));
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude}
+.glass::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:-1;
+  background:radial-gradient(120% 70% at 20% 0%,rgba(255,255,255,.26),transparent 55%)}
+
+main{max-width:480px;margin:0 auto;padding:calc(var(--safe-top) + 20px) 18px calc(var(--safe-bottom) + 190px)}
+.screen{min-height:80vh;display:flex;flex-direction:column;justify-content:center;gap:14px}
+h1{font-size:34px;line-height:1.08;font-weight:700;letter-spacing:-.025em;max-width:13ch}
+h2{font-size:22px;font-weight:700;letter-spacing:-.015em;margin:30px 4px 12px}
+.sub{font-size:16px;line-height:1.4;color:var(--ink2);max-width:34ch;margin-top:8px}
+.card{border-radius:26px;padding:18px}
+.card + .card{margin-top:12px}
+
+/* кнопки и поля */
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:15px 18px;border-radius:18px;
+  font-size:16px;font-weight:600;color:#fff;
+  background:radial-gradient(120% 140% at 30% 0%,var(--orange-hi),var(--orange) 45%,var(--orange-lo));
+  box-shadow:0 10px 26px rgba(255,122,26,.35),inset 0 1px 1px rgba(255,255,255,.7),inset 0 -2px 4px rgba(140,40,0,.3)}
+.btn:active,.pill:active,.tab:active{transform:scale(.97)}
+.btn.ghost{background:linear-gradient(145deg,var(--glass-a),var(--glass-b));color:var(--ink);
+  box-shadow:inset 0 1px 1px var(--rim),inset 0 0 0 1px var(--rim-lo)}
+.btn.danger{background:rgba(255,69,58,.14);color:var(--red);box-shadow:inset 0 0 0 1px rgba(255,69,58,.25)}
+.btn[disabled]{opacity:.5}
+.btns{display:flex;gap:10px;margin-top:14px}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:999px;font-size:14px;font-weight:600;
+  background:var(--glass-b);box-shadow:inset 0 0 0 1px var(--rim-lo)}
+.pill.ok{background:rgba(255,138,43,.18);color:var(--orange);box-shadow:inset 0 0 0 1px rgba(255,138,43,.35)}
+.inp{width:100%;padding:13px 14px;border-radius:14px;border:0;outline:0;font:inherit;font-size:16px;color:var(--ink);
+  background:var(--glass-b);box-shadow:inset 0 0 0 1px var(--rim-lo)}
+.inp:focus{box-shadow:inset 0 0 0 1.5px var(--orange)}
+.inp::placeholder{color:var(--ink3)}
+label.f{display:block;font-size:13px;color:var(--ink2);margin:14px 4px 6px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.check{display:flex;align-items:center;gap:10px;margin-top:16px;font-size:15px}
+.check input{width:22px;height:22px;accent-color:var(--orange)}
+
+/* шапка пути */
+.who{display:inline-flex;align-items:center;gap:10px;border-radius:999px;padding:7px 14px 7px 7px;font-size:14px;max-width:100%}
+.who .av{flex:none;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:13px;color:#fff;
+  background:radial-gradient(circle at 35% 30%,var(--orange-hi),var(--orange) 55%,var(--orange-lo))}
+.who .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.who .grp{color:var(--ink2);white-space:nowrap}
+.path-head h1{margin-top:24px}
+
+/* траектория */
+.road{position:relative;margin:32px 0 6px;padding:6px 0}
+.road > svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}
+.start{height:30px;display:flex;justify-content:center}
+.start span{width:10px;height:10px;border-radius:50%;background:var(--track)}
+.step{display:flex;align-items:center;gap:16px;height:112px;padding:0 6px}
+.step.r{flex-direction:row-reverse;text-align:right}
+.orb{flex:none;width:62px;height:62px;border-radius:50%;display:grid;place-items:center;font-size:20px;font-weight:600;color:var(--ink2)}
+.orb svg{width:26px;height:26px}
+.step.done .orb{color:#fff;background:radial-gradient(circle at 34% 28%,var(--orange-hi),var(--orange) 52%,var(--orange-lo));
+  box-shadow:0 10px 28px rgba(255,122,26,.45),inset 0 2px 2px rgba(255,255,255,.7),inset 0 -3px 6px rgba(140,40,0,.35)}
+.step.done .orb::before{display:none}
+.step.next .orb{color:var(--ink)}
+.step.next .orb::after{content:"";position:absolute;inset:-7px;border-radius:50%;border:1.5px solid var(--orange);
+  opacity:0;animation:ping 2.4s ease-out infinite}
+@keyframes ping{0%{transform:scale(.85);opacity:.9}100%{transform:scale(1.25);opacity:0}}
+.step.goal .orb{width:78px;height:78px}
+.step.goal .orb svg{width:32px;height:32px}
+.lbl .t{font-size:19px;font-weight:650;letter-spacing:-.01em}
+.lbl .s{font-size:13px;color:var(--ink2);margin-top:2px}
+.step:not(.done):not(.next) .lbl .t{color:var(--ink2)}
+.ball{position:absolute;left:0;top:0;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:50%;z-index:2;opacity:0;
+  background:radial-gradient(circle at 35% 30%,#fff,#FFE3C7 45%,#FFB06A);box-shadow:0 4px 12px rgba(255,140,40,.6)}
+.stats{display:flex;gap:10px}
+.stats div{flex:1}
+.stats b{display:block;font-size:26px;font-weight:700;letter-spacing:-.02em}
+.stats span{font-size:13px;color:var(--ink2)}
+.dates{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
+.dates span{font-size:13px;padding:5px 10px;border-radius:999px;background:var(--glass-b);box-shadow:inset 0 0 0 1px var(--rim-lo)}
+.path-panel{margin-top:22px}
+
+/* расписание */
+.ev-hero .when{font-size:13px;font-weight:600;color:var(--orange);margin-bottom:6px}
+.ev-hero .wd{font-size:30px;font-weight:700;letter-spacing:-.02em;line-height:1.1}
+.ev-hero .dt{font-size:17px;color:var(--ink2);margin-top:2px}
+.ev-hero .tm{font-size:28px;font-weight:600;margin-top:16px}
+.ev-hero .pl{font-size:15px;color:var(--ink2);margin-top:4px}
+.note{font-size:15px;line-height:1.45;margin-top:14px;padding-top:14px;border-top:1px solid var(--rim-lo);white-space:pre-wrap}
+.ev{display:flex;gap:14px;align-items:center;padding:12px 0}
+.ev + .ev{border-top:1px solid var(--rim-lo)}
+.ev .d{flex:none;width:54px;height:58px;border-radius:16px;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.ev .d b{font-size:22px;line-height:1}
+.ev .d span{font-size:11px;color:var(--ink2);margin-top:3px}
+.ev .i{flex:1;min-width:0}
+.ev .i .a{font-weight:600}
+.ev .i .b{font-size:14px;color:var(--ink2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.x{flex:none;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;color:var(--ink2);background:var(--glass-b)}
+.x svg{width:16px;height:16px}
+.head-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:30px 4px 12px}
+.head-row h2{margin:0}
+.empty{text-align:center;padding:30px 10px;color:var(--ink2);line-height:1.45}
+
+/* клуб */
+.qrbox{background:#fff;border-radius:24px;padding:14px;margin:0 auto;max-width:300px;box-shadow:0 12px 40px rgba(0,0,0,.25)}
+.qrbox img{display:block;width:100%;aspect-ratio:1;image-rendering:pixelated}
+.qbar{height:4px;border-radius:4px;background:var(--glass-b);margin:14px auto 0;max-width:300px;overflow:hidden}
+.qbar i{display:block;height:100%;width:100%;border-radius:4px;background:var(--orange);transform-origin:left}
+.sess-row{display:flex;align-items:flex-end;justify-content:space-between;margin-top:16px}
+.sess-row b{display:block;font-size:40px;font-weight:700;line-height:1}
+.sess-row span{font-size:13px;color:var(--ink2)}
+.person{display:flex;align-items:center;gap:12px;padding:11px 0}
+.person + .person{border-top:1px solid var(--rim-lo)}
+.person .i{flex:1;min-width:0}
+.person .i .a{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.person .i .b{font-size:13px;color:var(--ink2);margin-top:1px}
+.badge{flex:none;font-size:13px;font-weight:600;padding:5px 10px;border-radius:999px;background:var(--glass-b);box-shadow:inset 0 0 0 1px var(--rim-lo)}
+.badge.win{background:var(--orange);color:#fff;box-shadow:none}
+.plus{flex:none;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;color:#fff;background:var(--orange);font-size:20px}
+.req .btns{margin-top:10px}
+.req .btn{padding:11px}
+
+/* таббар и кнопка скана */
+.tabs{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--safe-bottom) + 12px);z-index:20;
+  display:flex;gap:4px;padding:6px;border-radius:999px}
+.tab{display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 20px 7px;border-radius:999px;font-size:11px;font-weight:600;color:var(--ink2);transition:background .25s,color .25s}
+.tab svg{width:24px;height:24px}
+.tab.on{color:var(--ink);background:rgba(255,255,255,.16);box-shadow:inset 0 1px 1px var(--rim)}
+:root.light .tab.on{background:rgba(255,255,255,.85)}
+.tab.on svg{color:var(--orange)}
+.fab{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--safe-bottom) + 92px);z-index:19;width:min(440px,calc(100% - 36px))}
+
+/* лист, тост */
+.sheet-wrap{position:fixed;inset:0;z-index:40;background:rgba(3,10,40,.35);opacity:0;pointer-events:none;transition:opacity .25s}
+.sheet-wrap.on{opacity:1;pointer-events:auto}
+.sheet{position:absolute;left:0;right:0;bottom:0;max-height:88vh;overflow:auto;border-radius:30px 30px 0 0;
+  padding:10px 18px calc(var(--safe-bottom) + 24px);background:var(--sheet);
+  -webkit-backdrop-filter:blur(30px) saturate(180%);backdrop-filter:blur(30px) saturate(180%);
+  box-shadow:0 -10px 40px rgba(0,0,0,.3),inset 0 1px 1px var(--rim);transform:translateY(100%);transition:transform .32s cubic-bezier(.2,.9,.25,1)}
+.sheet-wrap.on .sheet{transform:none}
+.sheet .grab{width:38px;height:5px;border-radius:3px;background:var(--track);margin:0 auto 14px}
+.sheet h3{font-size:22px;font-weight:700;letter-spacing:-.015em}
+.sheet .max{max-width:480px;margin:0 auto}
+.toast{position:fixed;left:50%;top:calc(var(--safe-top) + 12px);z-index:60;transform:translate(-50%,-140%);transition:transform .35s cubic-bezier(.2,.9,.25,1);
+  border-radius:20px;padding:12px 16px;font-size:15px;font-weight:500;width:max-content;max-width:calc(100% - 32px);text-align:center}
+.toast.on{transform:translate(-50%,0)}
+.spin{width:28px;height:28px;border-radius:50%;border:3px solid var(--track);border-top-color:var(--orange);animation:sp 0.8s linear infinite;margin:40vh auto 0}
+@keyframes sp{to{transform:rotate(360deg)}}
+[hidden]{display:none!important}
+@media (prefers-reduced-motion:reduce){.step.next .orb::after,.spin{animation:none}.sheet,.toast{transition:none}}
+</style>
+</head>
+<body>
+<div class="bg"><i class="b1"></i><i class="b2"></i><i class="b3"></i></div>
+<main id="app"><div class="spin"></div></main>
+<button class="btn fab" id="fab" data-act="scan" hidden>
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2M7 12h10"/></svg>
+  Отсканировать QR
+</button>
+<nav class="tabs glass" id="tabs" hidden></nav>
+<div class="toast glass" id="toast"></div>
+<div class="sheet-wrap" id="sheetWrap"><div class="sheet" id="sheet"></div></div>
+
+<script>
+(() => {
+const tg = window.Telegram && Telegram.WebApp;
+const INIT = (tg && tg.initData) || "";
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const plural = (k, a, b, c) => { const m = k % 10, h = k % 100;
+  return m === 1 && h !== 11 ? a : (m >= 2 && m <= 4 && (h < 10 || h >= 20) ? b : c); };
+const haptic = t => { try { t === "tap" ? tg.HapticFeedback.impactOccurred("light") : tg.HapticFeedback.notificationOccurred(t); } catch (e) {} };
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+const S = { me: null, tab: "path", sess: null, qr: null, qrW: null, deadline: 0, users: null, poll: null, bar: null, marks: null };
+
+const I = {
+  check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  cup: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4h8v5a4 4 0 0 1-8 0V4z"/><path d="M8 6H5v1.5A3 3 0 0 0 8 10.5M16 6h3v1.5a3 3 0 0 1-3 3"/><path d="M12 13v4M8.5 20h7M9.5 17h5"/></svg>',
+  x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  path: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="6" r="2.5"/><path d="M8.5 18H15a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h6.5"/></svg>',
+  cal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3.5" y="5" width="17" height="15" rx="3.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>',
+  club: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9.5" cy="9.5" r="6"/><path d="M13.8 13.8L20 20"/><circle cx="18.5" cy="5.5" r="1.8"/></svg>',
+};
+
+/* ─── API ─── */
+async function api(path, body) {
+  const r = await fetch(path, { method: body ? "POST" : "GET",
+    headers: Object.assign({ "Authorization": "tma " + INIT }, body ? { "Content-Type": "application/json" } : {}),
+    body: body ? JSON.stringify(body) : undefined });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || "Нет связи с сервером");
+  return j;
+}
+async function loadMe() { S.me = await api("/api/me"); }
+
+let toastT;
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("on"), 3200); }
+function confirmAsk(text) { return new Promise(res => { if (tg && tg.showConfirm) { try { return tg.showConfirm(text, res); } catch (e) {} } res(confirm(text)); }); }
+
+/* ─── тема ─── */
+function applyTheme() {
+  const light = tg ? tg.colorScheme === "light" : matchMedia("(prefers-color-scheme: light)").matches;
+  document.documentElement.classList.toggle("light", light);
+  const c = light ? "#DCE7FF" : "#081741";
+  try { tg.setHeaderColor(c); tg.setBackgroundColor(c); tg.setBottomBarColor && tg.setBottomBarColor(c); } catch (e) {}
+}
+
+/* ─── запуск ─── */
+async function boot() {
+  applyTheme();
+  if (tg) { tg.ready(); tg.expand(); tg.onEvent("themeChanged", applyTheme); try { tg.disableVerticalSwipes(); } catch (e) {} }
+  if (!INIT) return screen("Открой клуб из Telegram", "Это приложение работает внутри бота клуба.");
+  try { await loadMe(); } catch (e) { return screen("Нет связи", e.message, "Повторить", "reload"); }
+  route();
+}
+
+function screen(title, text, btn, act) {
+  $("tabs").hidden = true; $("fab").hidden = true;
+  $("app").innerHTML = `<div class="screen"><h1>${esc(title)}</h1><p class="sub">${esc(text)}</p>
+    ${btn ? `<button class="btn" style="margin-top:14px" data-act="${act}">${esc(btn)}</button>` : ""}</div>`;
+}
+
+function route() {
+  const m = S.me;
+  if (!m.admin) {
+    if (!m.user) return regScreen();
+    if (m.user.status === "pending") return screen("Заявка у руководителя",
+      "Как только её подтвердят, здесь появится твой путь к автомату. Уведомление придёт в чат.", "Проверить ещё раз", "reload");
+    if (m.user.status === "rejected") return screen("Заявка отклонена", "Если это ошибка — подойди к руководителю клуба.");
+  }
+  const tabs = [["path", "Путь", I.path], ["sched", "Расписание", I.cal]];
+  if (m.admin) tabs.push(["club", "Клуб", I.club]);
+  $("tabs").innerHTML = tabs.map(([k, t, i]) => `<button class="tab" data-act="tab" data-tab="${k}">${i}${t}</button>`).join("");
+  $("tabs").hidden = false;
+  render(true);
+}
+
+function regForm() {
+  return `<div class="card glass">
+    <label class="f" style="margin-top:0">Фамилия и имя</label>
+    <input class="inp" id="rName" placeholder="Петросян Арман" autocomplete="name">
+    <label class="f">Группа</label>
+    <input class="inp" id="rGrp" placeholder="ЮФ-21">
+    <button class="btn" style="margin-top:18px" data-act="register">Отправить заявку</button></div>`;
+}
+function regScreen() {
+  $("tabs").hidden = true; $("fab").hidden = true;
+  $("app").innerHTML = `<div class="screen"><h1>Клуб настольного тенниса</h1>
+    <p class="sub" style="margin-bottom:10px">Один раз укажи ФИО и группу как в ведомости — поменять их потом сможет только руководитель.</p>${regForm()}</div>`;
+}
+
+/* ─── рендер вкладок ─── */
+function render(animate) {
+  clearInterval(S.poll); clearInterval(S.bar); S.poll = S.bar = null;
+  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.tab === S.tab));
+  const approved = S.me.user && S.me.user.status === "approved";
+  $("fab").hidden = !(S.tab === "path" && approved);
+  if (S.tab === "path") { $("app").innerHTML = viewPath(); if (approved) drawRoad(animate); }
+  if (S.tab === "sched") $("app").innerHTML = viewSched();
+  if (S.tab === "club") { $("app").innerHTML = viewClub(); enterClub(); }
+  scrollTo(0, 0);
+}
+
+/* ── Путь ── */
+function viewPath() {
+  const m = S.me, u = m.user;
+  if (!u || u.status !== "approved") return `<h1>Твой путь</h1>
+    <p class="sub" style="margin-bottom:14px">Ты руководитель. Если тоже хочешь отмечаться и копить посещения — зарегистрируйся.</p>${regForm()}`;
+  const target = m.target, dates = m.visits, n = dates.length, done = Math.min(n, target), left = target - n;
+  let title, sub;
+  if (n === 0) { title = "Первая тренировка — первый шаг"; sub = `Для автомата по физкультуре нужно ${target} ${plural(target, "посещение", "посещения", "посещений")}.`; }
+  else if (left > 0) { title = `Ещё ${left} ${plural(left, "тренировка", "тренировки", "тренировок")} до автомата`; sub = `${n} из ${target} уже есть. Приходи в любой день клуба и отсканируй QR.`; }
+  else { title = "Автомат твой"; sub = n > target ? `Норма ${target}, у тебя ${n}. Дальше — просто ради игры.` : "Норма закрыта. Дальше — просто ради игры."; }
+  let steps = "";
+  for (let i = 1; i <= target; i++) {
+    const isDone = i <= done, isGoal = i === target, isNext = i === done + 1;
+    const t = isGoal ? "Автомат" : (isDone ? dates[i - 1] : `Тренировка ${i}`);
+    const s = isGoal ? (isDone ? `${dates[i - 1]} · ${i}-е посещение` : `${i}-е посещение`) : (isDone ? `тренировка ${i}` : (isNext ? "следующая" : ""));
+    steps += `<div class="step${i % 2 === 0 ? " r" : ""}${isDone ? " done" : ""}${isNext ? " next" : ""}${isGoal ? " goal" : ""}">
+      <div class="orb glass num">${isGoal ? I.cup : (isDone ? I.check : i)}</div>
+      <div class="lbl"><div class="t num">${t}</div><div class="s">${s}</div></div></div>`;
+  }
+  return `<div class="path-head">
+      <div class="who glass"><span class="av">${esc((u.name.trim()[0] || "?").toUpperCase())}</span><span class="nm">${esc(u.name)}</span><span class="grp">${esc(u.grp)}</span></div>
+      <h1>${title}</h1><p class="sub">${sub}</p></div>
+    <section class="road" id="road"><svg id="svg"></svg><div class="ball" id="ball"></div><div class="start"><span></span></div>${steps}</section>
+    <section class="card glass path-panel">
+      <div class="stats"><div><b class="num">${n}</b><span>${plural(n, "посещение", "посещения", "посещений")}</span></div>
+        <div><b class="num">${n ? dates[n - 1] : "—"}</b><span>последняя</span></div></div>
+      ${n ? `<div class="dates">${dates.map(d => `<span class="num">${d}</span>`).join("")}</div>` : ""}
+    </section>`;
+}
+
+function drawRoad(animate) {
+  const road = $("road"), svg = $("svg"), ball = $("ball"), NS = "http://www.w3.org/2000/svg";
+  const done = Math.min(S.me.visits.length, S.me.target);
+  const box = road.getBoundingClientRect();
+  const pts = [road.querySelector(".start span"), ...road.querySelectorAll(".orb")].map(e => {
+    const r = e.getBoundingClientRect(); return [r.left + r.width / 2 - box.left, r.top + r.height / 2 - box.top]; });
+  const seg = (a, b) => { const dy = b[1] - a[1]; return `C ${a[0]} ${a[1] + dy * .62} ${b[0]} ${b[1] - dy * .62} ${b[0]} ${b[1]}`; };
+  let dAll = `M ${pts[0][0]} ${pts[0][1]}`, dDone = dAll;
+  for (let i = 1; i < pts.length; i++) { dAll += " " + seg(pts[i - 1], pts[i]); if (i <= done) dDone += " " + seg(pts[i - 1], pts[i]); }
+  svg.innerHTML = `<defs><linearGradient id="gr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFC58C"/><stop offset="1" stop-color="#FF7A1A"/></linearGradient></defs>
+    <path d="${dAll}" fill="none" stroke="var(--track)" stroke-width="2" stroke-dasharray="2 9" stroke-linecap="round"/>
+    <path id="donePath" d="${dDone}" fill="none" stroke="url(#gr)" stroke-width="3.5" stroke-linecap="round"/>`;
+  const p = $("donePath"), len = p.getTotalLength();
+  const place = pt => ball.style.transform = `translate(${pt.x}px,${pt.y}px)`;
+  if (done === 0) { ball.style.opacity = 1; place({ x: pts[0][0], y: pts[0][1] }); return; }
+  if (!animate || reduce) return;
+  p.style.strokeDasharray = len; p.style.strokeDashoffset = len; ball.style.opacity = 1;
+  const dur = 700 + done * 450, t0 = performance.now() + 200, ease = x => 1 - Math.pow(1 - x, 3);
+  const tick = now => {
+    const k = Math.min(1, Math.max(0, (now - t0) / dur)), e = ease(k);
+    place(p.getPointAtLength(len * e)); p.style.strokeDashoffset = len * (1 - e);
+    if (k < 1) requestAnimationFrame(tick);
+    else { ball.style.transition = "opacity .35s"; ball.style.opacity = 0; haptic(S.me.visits.length >= S.me.target ? "success" : "tap"); }
+  };
+  requestAnimationFrame(tick);
+}
+
+/* ── Расписание ── */
+const fmtDay = d => { const x = new Date(d + "T00:00:00");
+  return { wd: x.toLocaleDateString("ru", { weekday: "long" }), dm: x.toLocaleDateString("ru", { day: "numeric", month: "long" }),
+    d: x.getDate(), mon: x.toLocaleDateString("ru", { month: "short" }).replace(".", ""), x }; };
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+const timeStr = e => e.t_from ? (e.t_to ? `${e.t_from}–${e.t_to}` : `в ${e.t_from}`) : "";
+function whenLabel(x) {
+  const t = new Date(); t.setHours(0, 0, 0, 0);
+  const diff = Math.round((x - t) / 864e5);
+  return diff === 0 ? "Сегодня" : diff === 1 ? "Завтра" : `Через ${diff} ${plural(diff, "день", "дня", "дней")}`;
+}
+function viewSched() {
+  const ev = S.me.schedule, admin = S.me.admin;
+  const add = admin ? `<button class="pill ok" data-act="evNew">+ Встреча</button>` : "";
+  if (!ev.length) return `<div class="head-row" style="margin-top:6px"><h1>Расписание</h1>${add}</div>
+    <div class="card glass empty">${admin ? "Встреч пока нет. Добавь ближайшую — участники увидят её здесь." : "Ближайших встреч пока нет. Руководитель добавит их сюда."}</div>`;
+  const [h, ...rest] = ev, f = fmtDay(h.day);
+  const del = e => admin ? `<button class="x" data-act="evDel" data-id="${e.id}" aria-label="Удалить">${I.x}</button>` : "";
+  return `<div class="head-row" style="margin-top:6px"><h1>Расписание</h1>${add}</div>
+    <div class="card glass ev-hero">
+      <div style="display:flex;justify-content:space-between;gap:10px"><div>
+        <div class="when">${whenLabel(f.x)}</div><div class="wd">${cap(f.wd)}</div><div class="dt">${f.dm}</div></div>${del(h)}</div>
+      ${timeStr(h) ? `<div class="tm num">${timeStr(h)}</div>` : ""}
+      ${h.place ? `<div class="pl">${esc(h.place)}</div>` : ""}
+      ${h.note ? `<div class="note">${esc(h.note)}</div>` : ""}
+    </div>
+    ${rest.length ? `<h2>Дальше</h2><div class="card glass" style="padding:6px 16px">${rest.map(e => { const g = fmtDay(e.day);
+      return `<div class="ev"><div class="d glass num"><b>${g.d}</b><span>${g.mon}</span></div>
+        <div class="i"><div class="a">${cap(g.wd)}${timeStr(e) ? ", " + timeStr(e) : ""}</div><div class="b">${esc([e.place, e.note].filter(Boolean).join(" · ")) || "&nbsp;"}</div></div>${del(e)}</div>`; }).join("")}</div>` : ""}`;
+}
+function evSheet() {
+  const today = new Date(Date.now() - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 10);
+  openSheet(`<h3>Новая встреча</h3>
+    <label class="f">Дата</label><input class="inp" type="date" id="eDay" value="${today}" min="${today}">
+    <div class="grid2"><div><label class="f">Начало</label><input class="inp" type="time" id="eFrom" value="18:00"></div>
+      <div><label class="f">Конец</label><input class="inp" type="time" id="eTo" value="20:00"></div></div>
+    <label class="f">Место</label><input class="inp" id="ePlace" placeholder="Спортзал, 2 этаж">
+    <label class="f">Комментарий</label><input class="inp" id="eNote" placeholder="Необязательно">
+    <label class="check"><input type="checkbox" id="eNotify" checked> Оповестить участников в чате</label>
+    <button class="btn" style="margin-top:18px" data-act="evSave">Добавить встречу</button>`);
+}
+
+/* ── Клуб (руководитель) ── */
+function viewClub() {
+  return `<h1 style="margin-top:6px">Клуб</h1>
+    <div id="sessCard" style="margin-top:20px"><div class="card glass"><div class="spin" style="margin:20px auto"></div></div></div>
+    <div id="reqBox"></div>
+    <div class="head-row"><h2>Участники</h2><button class="pill" data-act="export">Excel</button></div>
+    <div class="card glass" style="padding:14px 16px 6px">
+      <input class="inp" id="uSearch" placeholder="Поиск по фамилии" style="margin-bottom:6px">
+      <div id="uList"><div class="empty">Загрузка…</div></div></div>`;
+}
+async function enterClub() {
+  S.qrW = null;
+  loadUsers();
+  await pollSession();
+  S.poll = setInterval(pollSession, 1500);
+  S.bar = setInterval(tickBar, 100);
+}
+async function pollSession() {
+  if (S.tab !== "club") return;
+  try {
+    const r = await api("/api/admin/session" + (S.qrW != null ? "?w=" + S.qrW : ""));
+    if (r.qr) { S.qr = r.qr; S.qrW = r.window; }
+    if (r.active) S.deadline = Date.now() + r.next_in * 1000;
+    const changed = !S.sess || S.sess.active !== r.active || r.qr;
+    S.sess = r;
+    if (changed) sessCard(); else { const c = $("sCount"); if (c) c.textContent = r.count; }
+  } catch (e) {}
+}
+function tickBar() {
+  const b = $("qBar"); if (!b || !S.sess || !S.sess.active) return;
+  const k = Math.max(0, Math.min(1, (S.deadline - Date.now()) / (S.sess.ttl * 1000)));
+  b.style.transform = `scaleX(${k})`;
+}
+function sessCard() {
+  const s = S.sess, box = $("sessCard"); if (!box) return;
+  if (!s.active) {
+    box.innerHTML = `<div class="card glass"><div style="font-size:19px;font-weight:650">Занятие не идёт</div>
+      <p class="muted" style="margin-top:4px;font-size:15px">Начни — появится QR, который участники сканируют в приложении.</p>
+      <button class="btn" style="margin-top:16px" data-act="sessStart">Начать занятие</button>
+      ${s.last ? `<button class="btn ghost" style="margin-top:10px" data-act="marks" data-sid="${s.last}">Прошлое занятие</button>` : ""}</div>`;
+    return;
+  }
+  box.innerHTML = `<div class="card glass">
+    <div class="qrbox"><img src="${S.qr}" alt="QR для отметки"></div>
+    <div class="qbar"><i id="qBar"></i></div>
+    <div class="sess-row"><div><b class="num" id="sCount">${s.count}</b><span>отметилось</span></div>
+      <span class="num" style="text-align:right">идёт с ${s.started}<br>код меняется каждые ${s.ttl} с</span></div>
+    <div class="btns"><button class="btn ghost" data-act="marks" data-sid="${s.sid}">Список</button>
+      <button class="btn danger" data-act="sessStop">Завершить</button></div></div>`;
+}
+async function loadUsers() {
+  try { S.users = await api("/api/admin/users"); } catch (e) { return toast(e.message); }
+  const req = S.users.pending;
+  const rb = $("reqBox");
+  if (rb) rb.innerHTML = req.length ? `<h2>Заявки · ${req.length}</h2>${req.map(u => `<div class="card glass req">
+      <div class="person" style="padding:0"><div class="i"><div class="a">${esc(u.name)}</div><div class="b">${esc(u.grp)}${u.username ? " · @" + esc(u.username) : ""}</div></div></div>
+      <div class="btns"><button class="btn" data-act="uAct" data-a="approve" data-id="${u.id}">Принять</button>
+        <button class="btn ghost" data-act="uAct" data-a="reject" data-id="${u.id}">Отклонить</button></div></div>`).join("")}` : "";
+  renderUsers();
+}
+function renderUsers() {
+  const l = $("uList"); if (!l || !S.users) return;
+  const qv = ($("uSearch").value || "").toLowerCase().trim(), t = S.me.target;
+  const list = S.users.approved.filter(u => !qv || u.name.toLowerCase().includes(qv));
+  l.innerHTML = list.length ? list.map(u => `<div class="person" data-act="uOpen" data-id="${u.id}">
+      <div class="i"><div class="a">${esc(u.name)}</div><div class="b">${esc(u.grp)}</div></div>
+      <span class="badge num ${u.visits >= t ? "win" : ""}">${u.visits >= t ? "автомат" : u.visits + " из " + t}</span></div>`).join("")
+    : `<div class="empty">${S.users.approved.length ? "Никого не нашёл" : "Пока никого. Участники появятся после подтверждения заявок."}</div>`;
+}
+function userSheet(id) {
+  const u = S.users.approved.find(x => x.id == id); if (!u) return;
+  openSheet(`<h3>${esc(u.name)}</h3><p class="muted" style="margin-top:4px">${u.visits} ${plural(u.visits, "посещение", "посещения", "посещений")} в семестре</p>
+    <label class="f">Фамилия и имя</label><input class="inp" id="uName" value="${esc(u.name)}">
+    <label class="f">Группа</label><input class="inp" id="uGrp" value="${esc(u.grp)}">
+    <button class="btn" style="margin-top:18px" data-act="uSave" data-id="${u.id}">Сохранить</button>
+    <button class="btn danger" style="margin-top:10px" data-act="uDel" data-id="${u.id}">Удалить из клуба</button>`);
+}
+async function marksSheet(sid, reconcile) {
+  let r; try { r = await api("/api/admin/marks?sid=" + sid); } catch (e) { return toast(e.message); }
+  S.marks = r;
+  if (!S.users) await loadUsers();
+  const got = new Set(r.items.map(i => i.id));
+  openSheet(`<h3>${reconcile ? "Сверка" : "Отметились"} · <span class="num">${r.items.length}</span></h3>
+    <p class="muted" style="margin-top:4px;font-size:15px">${reconcile ? "Посчитай людей в зале. Если в списке больше — убери лишних." : `Занятие ${r.date}${r.ended ? ", завершено" : ""}`}</p>
+    <div style="margin-top:10px">${r.items.length ? r.items.map(i => `<div class="person">
+      <div class="i"><div class="a">${esc(i.name)}</div><div class="b num">${esc(i.grp)} · ${i.time}${i.manual ? " · вручную" : ""}</div></div>
+      <button class="x" data-act="unmark" data-id="${i.id}" aria-label="Убрать">${I.x}</button></div>`).join("") : `<div class="empty">Пока никого</div>`}</div>
+    <label class="f" style="margin-top:20px">Добавить вручную — если сел телефон</label>
+    <input class="inp" id="mSearch" placeholder="Начни вводить фамилию">
+    <div id="mFound"></div>`);
+  $("mSearch").oninput = () => {
+    const qv = $("mSearch").value.toLowerCase().trim();
+    $("mFound").innerHTML = qv ? S.users.approved.filter(u => !got.has(u.id) && u.name.toLowerCase().includes(qv)).slice(0, 8)
+      .map(u => `<div class="person"><div class="i"><div class="a">${esc(u.name)}</div><div class="b">${esc(u.grp)}</div></div>
+        <button class="plus" data-act="mark" data-id="${u.id}" aria-label="Добавить">+</button></div>`).join("") || `<div class="empty">Никого не нашёл</div>` : "";
+  };
+}
+
+/* ─── лист ─── */
+function openSheet(html) {
+  $("sheet").innerHTML = `<div class="grab"></div><div class="max">${html}</div>`;
+  $("sheetWrap").classList.add("on");
+  if (tg && tg.BackButton) { tg.BackButton.show(); tg.BackButton.onClick(closeSheet); }
+}
+function closeSheet() {
+  $("sheetWrap").classList.remove("on");
+  if (tg && tg.BackButton) { tg.BackButton.hide(); tg.BackButton.offClick(closeSheet); }
+}
+$("sheetWrap").addEventListener("click", e => { if (e.target.id === "sheetWrap") closeSheet(); });
+
+/* ─── отметка ─── */
+function scan() {
+  if (!tg || !tg.showScanQrPopup || !tg.isVersionAtLeast("6.4")) return toast("Обнови Telegram или отсканируй QR камерой телефона");
+  tg.showScanQrPopup({ text: "Наведи на QR-код у руководителя" }, txt => { checkin(txt); return true; });
+}
+async function checkin(code) {
+  try {
+    const r = await api("/api/checkin", { code });
+    if (r.ok) { await loadMe(); S.tab = "path"; render(true); }
+    haptic(r.ok ? "success" : "error"); toast(r.msg);
+  } catch (e) { toast(e.message); }
+}
+
+/* ─── действия ─── */
+const busy = new Set();
+document.addEventListener("click", async e => {
+  const el = e.target.closest("[data-act]"); if (!el) return;
+  const act = el.dataset.act, id = el.dataset.id;
+  if (busy.has(act)) return; busy.add(act);
+  try {
+    switch (act) {
+      case "reload": await loadMe(); route(); break;
+      case "tab": if (S.tab !== el.dataset.tab) { haptic("tap"); S.tab = el.dataset.tab; render(true); } break;
+      case "scan": haptic("tap"); scan(); break;
+      case "register": {
+        await api("/api/register", { name: $("rName").value, grp: $("rGrp").value });
+        await loadMe(); haptic("success"); route(); if (S.me.admin) toast("Готово, ты в списке"); break; }
+      case "evNew": evSheet(); break;
+      case "evSave": {
+        await api("/api/admin/events", { day: $("eDay").value, t_from: $("eFrom").value, t_to: $("eTo").value,
+          place: $("ePlace").value, note: $("eNote").value, notify: $("eNotify").checked });
+        closeSheet(); await loadMe(); render(); haptic("success"); toast($("eNotify") && $("eNotify").checked ? "Встреча добавлена, участники оповещены" : "Встреча добавлена"); break; }
+      case "evDel": if (await confirmAsk("Удалить встречу из расписания?")) { await api("/api/admin/events/delete", { id }); await loadMe(); render(); } break;
+      case "sessStart": await api("/api/admin/session/start", {}); haptic("success"); S.qrW = null; S.sess = null; await pollSession(); break;
+      case "sessStop": if (await confirmAsk("Завершить занятие? Отмечаться по QR больше будет нельзя.")) {
+        const r = await api("/api/admin/session/stop", {}); haptic("success"); S.sess = null; await pollSession(); marksSheet(r.sid, true); } break;
+      case "marks": marksSheet(el.dataset.sid, false); break;
+      case "unmark": if (await confirmAsk("Убрать отметку?")) {
+        await api("/api/admin/marks/remove", { sid: S.marks.sid, id }); marksSheet(S.marks.sid, false); loadUsers(); pollSession(); } break;
+      case "mark": await api("/api/admin/marks/add", { sid: S.marks.sid, id }); haptic("success"); marksSheet(S.marks.sid, false); loadUsers(); pollSession(); break;
+      case "uAct": await api("/api/admin/users/action", { id, action: el.dataset.a }); haptic("success"); loadUsers(); break;
+      case "uOpen": userSheet(id); break;
+      case "uSave": await api("/api/admin/users/action", { id, action: "rename", name: $("uName").value, grp: $("uGrp").value });
+        closeSheet(); toast("Сохранено"); loadUsers(); break;
+      case "uDel": if (await confirmAsk("Удалить участника вместе со всеми его отметками?")) {
+        await api("/api/admin/users/action", { id, action: "remove" }); closeSheet(); toast("Участник удалён"); loadUsers(); } break;
+      case "export": await api("/api/admin/export", {}); haptic("success"); toast("Excel отправлен в чат с ботом"); break;
+    }
+  } catch (err) { haptic("error"); toast(err.message); }
+  finally { busy.delete(act); }
+});
+document.addEventListener("input", e => { if (e.target.id === "uSearch") renderUsers(); });
+addEventListener("resize", () => { if (S.tab === "path" && $("road")) drawRoad(false); });
+
+boot();
+})();
+</script>
+</body>
+</html>
