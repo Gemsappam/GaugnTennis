@@ -252,7 +252,12 @@ def get_session(sid):
 
 
 def active_session():
-    return q1("SELECT * FROM sessions WHERE ended_at IS NULL ORDER BY id DESC LIMIT 1")
+    s = q1("SELECT * FROM sessions WHERE ended_at IS NULL ORDER BY id DESC LIMIT 1")
+    if s and s["started_at"][:10] != now().date().isoformat():
+        # забыли нажать «Завершить» — вчерашнее занятие закрываем само, иначе сегодняшние отметки ушли бы во вчера
+        ex("UPDATE sessions SET ended_at=? WHERE id=?", s["started_at"][:10] + "T23:59:59", s["id"])
+        return None
+    return s
 
 
 def last_session():
@@ -352,6 +357,7 @@ def do_checkin(uid: int, code: str) -> dict:
         return {"ok": False, "msg": "Заявка отклонена. Подойди к руководителю клуба."}
     if not has_consent(user):
         return {"ok": False, "msg": "Сначала прими согласие на обработку данных в приложении клуба."}
+    active_session()  # закроет забытое вчерашнее занятие
     s = get_session(sid)
     if not s or s["ended_at"]:
         return {"ok": False, "msg": "Это занятие уже закончилось."}
