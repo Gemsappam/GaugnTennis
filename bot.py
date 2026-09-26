@@ -52,7 +52,25 @@ SEMESTER_START = os.getenv("SEMESTER_START", "")
 QR_TTL = int(os.getenv("QR_TTL", "20"))
 DB_PATH = os.getenv("DB_PATH", "attendance.db")
 BACKUP_CHAT_ID = os.getenv("BACKUP_CHAT_ID", "").strip()
-BACKUP_EVERY = 15  # секунд между проверками, есть ли что бэкапить
+BACKUP_EVERY = 15
+
+# Согласие на обработку персональных данных. Меняешь текст — подними версию,
+# и всех попросит принять согласие заново.
+CONSENT_VERSION = "2026-09-26b"
+CONTACT = "@armaning"
+CONSENT_TEXT = f"""Регистрируясь в клубе настольного тенниса ГАУГН, я даю согласие руководителю клуба (Telegram: {CONTACT}), далее — оператор, на обработку моих персональных данных.
+
+Какие данные: фамилия, имя и отчество, курс и факультет, Telegram ID и имя пользователя в Telegram, даты и время посещения тренировок.
+
+Зачем: учёт посещаемости клуба и передача сведений о моих посещениях в ГАУГН (преподавателю физической культуры) для зачёта.
+
+Что с ними делают: сбор, запись, хранение, использование, передача университету, удаление. Обработка автоматизированная — через Telegram-бота клуба. Данные хранятся на сервере хостинга бота и в резервной копии в закрытом Telegram-канале оператора.
+
+Срок: до окончания текущего учебного года, после чего данные удаляются.
+
+Отзыв: согласие можно отозвать в любой момент, написав {CONTACT}. Данные будут удалены, учёт посещений прекратится.
+
+Согласие действует с момента нажатия «Даю согласие»."""  # секунд между проверками, есть ли что бэкапить
 WEB_DIR = Path(__file__).resolve().parent / "webapp"
 
 try:
@@ -127,6 +145,10 @@ def init_db():
     db = sqlite3.connect(DB_FILE, check_same_thread=False)
     db.row_factory = sqlite3.Row
     db.executescript(SCHEMA)
+    cols = {r[1] for r in db.execute("PRAGMA table_info(users)")}
+    for c in ("consent_at", "consent_ver"):
+        if c not in cols:
+            db.execute(f"ALTER TABLE users ADD COLUMN {c} TEXT")
     db.commit()
     print(f"[DB] База: {DB_FILE}", flush=True)
 
@@ -219,6 +241,10 @@ def ex(sql, *a):
 
 def get_user(uid):
     return q1("SELECT * FROM users WHERE tg_id=?", uid)
+
+
+def has_consent(u) -> bool:
+    return bool(u) and u["consent_ver"] == CONSENT_VERSION
 
 
 def get_session(sid):
@@ -324,6 +350,8 @@ def do_checkin(uid: int, code: str) -> dict:
         return {"ok": False, "msg": "Заявка ещё не подтверждена руководителем."}
     if user["status"] != "approved":
         return {"ok": False, "msg": "Заявка отклонена. Подойди к руководителю клуба."}
+    if not has_consent(user):
+        return {"ok": False, "msg": "Сначала прими согласие на обработку данных в приложении клуба."}
     s = get_session(sid)
     if not s or s["ended_at"]:
         return {"ok": False, "msg": "Это занятие уже закончилось."}
@@ -353,7 +381,7 @@ def build_excel() -> bytes:
     wb = Workbook()
     ws = wb.active
     ws.title = "Посещаемость"
-    ws.append(["ФИО", "Группа", *labels, "Всего", "Автомат"])
+    ws.append(["ФИО", "Курс, факультет", *labels, "Всего", "Автомат", "Согласие на ПДн"])
     for u in users:
         row, days = [u["full_name"], u["grp"]], set()
         for s in sessions:
@@ -362,21 +390,22 @@ def build_excel() -> bytes:
                 days.add(s["started_at"][:10])
             row.append("+" if hit else "")
         total = len(days)
-        row += [total, "✅" if total >= AUTOMAT_TARGET else f"ещё {AUTOMAT_TARGET - total}"]
+        row += [total, "✅" if total >= AUTOMAT_TARGET else f"ещё {AUTOMAT_TARGET - total}",
+                fmt_dt(u["consent_at"], "%d.%m.%Y %H:%M") if has_consent(u) else "нет"]
         ws.append(row)
     hf, hfill = Font(bold=True, color="FFFFFF"), PatternFill("solid", fgColor="2F5597")
     center = Alignment(horizontal="center", vertical="center")
     for c in ws[1]:
         c.font, c.fill, c.alignment = hf, hfill, center
-    ws.column_dimensions["A"].width, ws.column_dimensions["B"].width = 32, 12
-    for col in range(3, len(labels) + 5):
-        ws.column_dimensions[get_column_letter(col)].width = 11
+    ws.column_dimensions["A"].width, ws.column_dimensions["B"].width = 36, 24
+    for col in range(3, len(labels) + 6):
+        ws.column_dimensions[get_column_letter(col)].width = 17 if col == len(labels) + 5 else 11
         for r in range(2, ws.max_row + 1):
             ws.cell(row=r, column=col).alignment = center
     ws.freeze_panes = "C2"
 
     log = wb.create_sheet("Журнал")
-    log.append(["Дата", "Время", "ФИО", "Группа", "Способ"])
+    log.append(["Дата", "Время", "ФИО", "Курс, факультет", "Способ"])
     for r in q("""SELECT s.started_at, a.marked_at, a.method, u.full_name, u.grp FROM attendance a
                   JOIN sessions s ON s.id=a.session_id JOIN users u ON u.tg_id=a.tg_id
                   WHERE s.started_at>=? ORDER BY a.marked_at""", since()):
@@ -384,7 +413,7 @@ def build_excel() -> bytes:
                     "QR" if r["method"] == "qr" else "вручную"])
     for c in log[1]:
         c.font, c.fill = hf, hfill
-    for col, w in zip("ABCDE", (12, 8, 32, 12, 10)):
+    for col, w in zip("ABCDE", (12, 8, 36, 24, 10)):
         log.column_dimensions[col].width = w
     buf = io.BytesIO()
     wb.save(buf)
@@ -513,7 +542,8 @@ async def api_me(request):
     u = get_user(uid)
     return web.json_response({
         "admin": is_admin(uid), "target": AUTOMAT_TARGET, "ttl": QR_TTL,
-        "user": {"name": u["full_name"], "grp": u["grp"], "status": u["status"]} if u else None,
+        "user": {"name": u["full_name"], "grp": u["grp"], "status": u["status"], "consent": has_consent(u)} if u else None,
+        "consent_text": CONSENT_TEXT, "consent_version": CONSENT_VERSION, "contact": CONTACT,
         "visits": visit_dates(uid) if u else [],
         "schedule": upcoming_events(),
     })
@@ -526,17 +556,30 @@ async def api_register(request):
     grp = " ".join(str(d.get("grp", "")).split())
     if len(name.split()) < 2 or len(name) > 80:
         return jerr("Напиши фамилию и имя через пробел")
-    if not grp or len(grp) > 30:
-        return jerr("Укажи группу, например ЮФ-21")
+    if not grp or len(grp) > 60:
+        return jerr("Укажи курс и факультет, например: 1 курс, Юридический")
+    if d.get("consent") is not True:
+        return jerr("Без согласия на обработку данных зарегистрироваться нельзя")
     u = get_user(uid)
     if u and u["status"] != "pending":
         return jerr("Ты уже зарегистрирован(а)" if u["status"] == "approved"
                     else "Заявка отклонена — подойди к руководителю")
     status = "approved" if is_admin(uid) else "pending"
-    ex("INSERT OR REPLACE INTO users(tg_id, full_name, grp, username, status, created_at) VALUES(?,?,?,?,?,?)",
-       uid, name, grp, request["tg"].get("username"), status, now_iso())
+    ex("""INSERT OR REPLACE INTO users(tg_id, full_name, grp, username, status, created_at, consent_at, consent_ver)
+          VALUES(?,?,?,?,?,?,?,?)""",
+       uid, name, grp, request["tg"].get("username"), status, now_iso(), now_iso(), CONSENT_VERSION)
     if status == "pending":
         asyncio.create_task(notify_admins_new(uid))
+    return web.json_response({"ok": True})
+
+
+@routes.post("/api/consent")
+async def api_consent(request):
+    if (await body(request)).get("consent") is not True:
+        return jerr("Нужно отметить галочку согласия")
+    if not get_user(request["uid"]):
+        return jerr("Сначала зарегистрируйся")
+    ex("UPDATE users SET consent_at=?, consent_ver=? WHERE tg_id=?", now_iso(), CONSENT_VERSION, request["uid"])
     return web.json_response({"ok": True})
 
 
@@ -605,6 +648,8 @@ async def adm_mark(request):
     s = get_session(sid)
     if not s or not u or u["status"] != "approved":
         return jerr("Занятие или участник не найдены")
+    if not has_consent(u):
+        return jerr("Он ещё не принял согласие на обработку данных — пусть откроет приложение")
     same_day = q1("""SELECT 1 FROM attendance a JOIN sessions x ON x.id=a.session_id
                      WHERE a.tg_id=? AND substr(x.started_at, 1, 10)=?""", uid, s["started_at"][:10])
     if same_day:
@@ -620,7 +665,7 @@ async def adm_users(_):
     counts = visit_counts()
     def pack(u):
         return {"id": u["tg_id"], "name": u["full_name"], "grp": u["grp"], "username": u["username"],
-                "visits": counts.get(u["tg_id"], 0)}
+                "visits": counts.get(u["tg_id"], 0), "consent": has_consent(u)}
     return web.json_response({
         "pending": [pack(u) for u in q("SELECT * FROM users WHERE status='pending' ORDER BY created_at")],
         "approved": [pack(u) for u in q("SELECT * FROM users WHERE status='approved' ORDER BY full_name")]})
@@ -639,7 +684,7 @@ async def adm_user_action(request):
         name = " ".join(str(d.get("name", "")).split())
         grp = " ".join(str(d.get("grp", "")).split())
         if len(name.split()) < 2 or not grp:
-            return jerr("Нужны фамилия, имя и группа")
+            return jerr("Нужны ФИО, курс и факультет")
         ex("UPDATE users SET full_name=?, grp=? WHERE tg_id=?", name, grp, uid)
     elif action == "remove":
         ex("DELETE FROM attendance WHERE tg_id=?", uid)
