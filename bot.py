@@ -85,7 +85,23 @@ def since() -> str:
 
 
 # ─────────────────────────── БАЗА ───────────────────────────
-db = sqlite3.connect(DB_PATH, check_same_thread=False)
+def open_db(path: str) -> sqlite3.Connection:
+    try:
+        folder = os.path.dirname(os.path.abspath(path))
+        os.makedirs(folder, exist_ok=True)
+        conn = sqlite3.connect(path, check_same_thread=False)
+        conn.execute("CREATE TABLE IF NOT EXISTS _probe(x)")  # проверка, что папка доступна на запись
+        conn.execute("DROP TABLE _probe")
+        print(f"[DB] База: {os.path.abspath(path)}", flush=True)
+        return conn
+    except (sqlite3.OperationalError, OSError) as e:
+        fallback = os.path.join(os.path.dirname(os.path.abspath(__file__)), "attendance.db")
+        print(f"[DB] ⚠️ Не могу открыть {path!r} ({e}). Использую {fallback} — "
+              "ДАННЫЕ БУДУТ СТИРАТЬСЯ при перезапуске, проверь DB_PATH и Volume!", flush=True)
+        return sqlite3.connect(fallback, check_same_thread=False)
+
+
+db = open_db(DB_PATH)
 db.row_factory = sqlite3.Row
 db.executescript("""
 CREATE TABLE IF NOT EXISTS users(
