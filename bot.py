@@ -11,6 +11,7 @@
   SEMESTER_START   с какой даты считать посещения, ГГГГ-ММ-ДД (пусто = за всё время)
   QR_TTL           сколько секунд живёт один QR (по умолчанию 20)
   DB_PATH          путь к базе (по умолчанию attendance.db)
+  BACKUP_CHAT_ID   ID закрытого канала для бэкапов базы — спасает данные на бесплатном тарифе
 """
 import asyncio
 import base64
@@ -50,6 +51,8 @@ AUTOMAT_TARGET = int(os.getenv("AUTOMAT_TARGET", "3"))
 SEMESTER_START = os.getenv("SEMESTER_START", "")
 QR_TTL = int(os.getenv("QR_TTL", "20"))
 DB_PATH = os.getenv("DB_PATH", "attendance.db")
+BACKUP_CHAT_ID = os.getenv("BACKUP_CHAT_ID", "").strip()
+BACKUP_EVERY = 15  # секунд между проверками, есть ли что бэкапить
 WEB_DIR = Path(__file__).resolve().parent / "webapp"
 
 try:
@@ -85,25 +88,24 @@ def since() -> str:
 
 
 # ─────────────────────────── БАЗА ───────────────────────────
-def open_db(path: str) -> sqlite3.Connection:
+def pick_db_path(path: str) -> str:
+    """Проверяем, что в папку можно писать; если нет — берём папку рядом с bot.py."""
     try:
         folder = os.path.dirname(os.path.abspath(path))
         os.makedirs(folder, exist_ok=True)
-        conn = sqlite3.connect(path, check_same_thread=False)
-        conn.execute("CREATE TABLE IF NOT EXISTS _probe(x)")  # проверка, что папка доступна на запись
-        conn.execute("DROP TABLE _probe")
-        print(f"[DB] База: {os.path.abspath(path)}", flush=True)
-        return conn
-    except (sqlite3.OperationalError, OSError) as e:
+        probe = os.path.join(folder, ".write_test")
+        with open(probe, "w") as f:
+            f.write("ok")
+        os.remove(probe)
+        return os.path.abspath(path)
+    except OSError as e:
         fallback = os.path.join(os.path.dirname(os.path.abspath(__file__)), "attendance.db")
-        print(f"[DB] ⚠️ Не могу открыть {path!r} ({e}). Использую {fallback} — "
-              "ДАННЫЕ БУДУТ СТИРАТЬСЯ при перезапуске, проверь DB_PATH и Volume!", flush=True)
-        return sqlite3.connect(fallback, check_same_thread=False)
+        print(f"[DB] ⚠️ Не могу писать в {path!r} ({e}). Использую {fallback}", flush=True)
+        return fallback
 
 
-db = open_db(DB_PATH)
-db.row_factory = sqlite3.Row
-db.executescript("""
+DB_FILE = pick_db_path(DB_PATH)
+SCHEMA = """
 CREATE TABLE IF NOT EXISTS users(
     tg_id INTEGER PRIMARY KEY, full_name TEXT NOT NULL, grp TEXT NOT NULL, username TEXT,
     status TEXT NOT NULL DEFAULT 'pending', created_at TEXT NOT NULL);
@@ -116,8 +118,87 @@ CREATE TABLE IF NOT EXISTS attendance(
 CREATE TABLE IF NOT EXISTS events(
     id INTEGER PRIMARY KEY AUTOINCREMENT, day TEXT NOT NULL, t_from TEXT, t_to TEXT,
     place TEXT, note TEXT, created_at TEXT NOT NULL);
-""")
-db.commit()
+"""
+db: sqlite3.Connection | None = None
+
+
+def init_db():
+    global db
+    db = sqlite3.connect(DB_FILE, check_same_thread=False)
+    db.row_factory = sqlite3.Row
+    db.executescript(SCHEMA)
+    db.commit()
+    print(f"[DB] База: {DB_FILE}", flush=True)
+
+
+# ─────────────────────────── БЭКАП В TELEGRAM ───────────────────────────
+# Бот держит копию базы закреплённым файлом в закрытом канале.
+# При старте, если локальной базы нет (бесплатный тариф её стёр), скачивает закреп.
+# После изменений каждые ~15 секунд отправляет свежую копию и удаляет старую.
+DIRTY = False
+BACKUP_BLOCKED = False   # если восстановить не вышло — не затираем хороший бэкап пустой базой
+LAST_BACKUP_MSG = None
+
+
+async def restore_backup():
+    global LAST_BACKUP_MSG, BACKUP_BLOCKED
+    if not BACKUP_CHAT_ID:
+        print("[BACKUP] BACKUP_CHAT_ID не задан — бэкапов нет, на бесплатном тарифе данные сотрутся", flush=True)
+        return
+    if os.path.exists(DB_FILE) and os.path.getsize(DB_FILE) > 0:
+        print("[BACKUP] Локальная база на месте — восстановление не нужно", flush=True)
+        return
+    for attempt in range(1, 4):
+        try:
+            chat = await BOT.get_chat(int(BACKUP_CHAT_ID))
+            pm = chat.pinned_message
+            if not pm or not pm.document:
+                print("[BACKUP] Бэкапов в канале пока нет — начинаем с чистой базы", flush=True)
+                return
+            tmp = DB_FILE + ".restore"
+            await BOT.download(pm.document.file_id, destination=tmp)
+            sqlite3.connect(tmp).execute("PRAGMA integrity_check").fetchone()
+            os.replace(tmp, DB_FILE)
+            LAST_BACKUP_MSG = pm.message_id
+            print(f"[BACKUP] ✅ База восстановлена из бэкапа ({pm.date:%d.%m %H:%M} UTC)", flush=True)
+            return
+        except Exception as e:
+            print(f"[BACKUP] Попытка {attempt}: не удалось восстановить ({e})", flush=True)
+            await asyncio.sleep(3)
+    BACKUP_BLOCKED = True
+    print("[BACKUP] ⚠️ Восстановить не вышло. Бэкапы ОТКЛЮЧЕНЫ до перезапуска, "
+          "чтобы не затереть хорошую копию пустой базой. Проверь, что бот — админ канала.", flush=True)
+
+
+async def backup_now(force=False) -> bool:
+    global DIRTY, LAST_BACKUP_MSG
+    if not BACKUP_CHAT_ID or BACKUP_BLOCKED or not (DIRTY or force):
+        return False
+    DIRTY = False
+    chat_id = int(BACKUP_CHAT_ID)
+    try:
+        msg = await BOT.send_document(
+            chat_id, BufferedInputFile(db.serialize(), "attendance.db"),
+            caption=f"🗄 Бэкап базы клуба · {now():%d.%m.%Y %H:%M:%S}\nНе удаляй и не открепляй.",
+            disable_notification=True)
+        await BOT.pin_chat_message(chat_id, msg.message_id, disable_notification=True)
+        if LAST_BACKUP_MSG and LAST_BACKUP_MSG != msg.message_id:
+            try:
+                await BOT.delete_message(chat_id, LAST_BACKUP_MSG)
+            except Exception:
+                pass
+        LAST_BACKUP_MSG = msg.message_id
+        return True
+    except Exception as e:
+        DIRTY = True
+        logging.warning("[BACKUP] не удалось отправить бэкап: %s", e)
+        return False
+
+
+async def backup_loop():
+    while True:
+        await asyncio.sleep(BACKUP_EVERY)
+        await backup_now()
 
 
 def q(sql, *a):
@@ -129,8 +210,10 @@ def q1(sql, *a):
 
 
 def ex(sql, *a):
+    global DIRTY
     cur = db.execute(sql, a)
     db.commit()
+    DIRTY = True
     return cur
 
 
@@ -629,6 +712,22 @@ async def cmd_start(m: Message, command: CommandObject):
                    reply_markup=app_kb())
 
 
+@router.channel_post(Command("id"))
+async def channel_id(m: Message):
+    await m.answer(f"Вставь в переменные Bothost:\n<code>BACKUP_CHAT_ID={m.chat.id}</code>\nи перезапусти бота.")
+
+
+@router.message(IsAdmin, Command("backup"))
+async def cmd_backup(m: Message):
+    if not BACKUP_CHAT_ID:
+        await m.answer("BACKUP_CHAT_ID не задан — бэкапы выключены.")
+    elif BACKUP_BLOCKED:
+        await m.answer("⚠️ Бэкапы заблокированы: при старте не удалось восстановить базу. Проверь, что бот — админ канала, и перезапусти.")
+    else:
+        ok = await backup_now(force=True)
+        await m.answer("✅ Бэкап отправлен в канал" if ok else "⚠️ Не получилось — бот точно админ канала с правом закреплять?")
+
+
 @router.message(IsAdmin, Command("excel"))
 async def cmd_excel(m: Message):
     await m.answer_document(BufferedInputFile(build_excel(), f"poseshaemost_{now():%Y-%m-%d}.xlsx"))
@@ -665,6 +764,8 @@ async def main():
         raise SystemExit("Укажи BOT_TOKEN и ADMIN_IDS")
     BOT = Bot(BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     BOT_USERNAME = (await BOT.get_me()).username
+    await restore_backup()
+    init_db()
 
     runner = web.AppRunner(build_web_app())
     await runner.setup()
@@ -676,7 +777,12 @@ async def main():
     dp = Dispatcher()
     dp.include_router(router)
     await BOT.delete_webhook(drop_pending_updates=False)
-    await dp.start_polling(BOT)
+    backup_task = asyncio.create_task(backup_loop())
+    try:
+        await dp.start_polling(BOT)
+    finally:
+        backup_task.cancel()
+        await backup_now()  # финальный бэкап при остановке/перезапуске
 
 
 if __name__ == "__main__":
